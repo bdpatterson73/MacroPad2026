@@ -2,7 +2,9 @@
 using System.Collections;
 using System.Collections.Generic;
 using System.Data;
+using System.Diagnostics;
 using System.Drawing;
+using System.IO;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
@@ -31,16 +33,66 @@ namespace RSoft.MacroPad.Forms
         private IUsb _usb = new HidLibUsb();
         private ConfigurationReader _configReader = new ConfigurationReader();
         private ComposerRepository _composerRepository = new ComposerRepository();
-
+        private SplitContainer _editorAndListSplit;
+        private GroupBox _grpAssignments;
+        private ListView _lvAssignments;
+        private bool _initialSplitSet;
 
         public MainForm()
         {
             InitializeComponent();
-
+            BuildAssignmentListView();
+           // EnsureKeySetupVisible();   // <= add this line
+            keyboardVisual1.FunctionSelected += (s, action) =>
+            {
+                var layer = keyboardVisual1.Layer;
+                foreach (ListViewItem row in _lvAssignments.Items)
+                {
+                    var key = ((byte Layer, InputAction Action))row.Tag;
+                    row.Selected = key.Layer == layer && key.Action.Equals(action);
+                    if (row.Selected) { row.EnsureVisible(); }
+                }
+            };
             InitializeLayouts();
             InitializeUsb();
         }
 
+        private void PopulateAssignmentsList()
+        {
+            _lvAssignments.BeginUpdate();
+            _lvAssignments.Items.Clear();
+
+            var layout = keyboardVisual1.KeyboardLayout;
+            if (layout == null)
+            {
+                _lvAssignments.EndUpdate();
+                return;
+            }
+
+            const int layerCount = 3; // your board has 3 layers
+
+            foreach (PhysicalControl control in layout.Controls)
+            {
+                foreach (var action in control.Actions)
+                {
+                    for (byte layer = 1; layer <= layerCount; layer++)
+                    {
+                        var lvi = new ListViewItem(new[]
+                            {
+                                layer.ToString(),
+                                action.ToString(),
+                                "—",   // Type (unassigned yet)
+                                "—"    // Value (unassigned yet)
+                            })
+                            { Tag = (layer, action) };
+
+                        _lvAssignments.Items.Add(lvi);
+                    }
+                }
+            }
+
+            _lvAssignments.EndUpdate();
+        }
 
         #region Init
         private void InitializeUsb()
@@ -57,10 +109,13 @@ namespace RSoft.MacroPad.Forms
                 {
                     keyboardVisual1.KeyboardLayout = layout;
                     keyboardFunction1.KeyboardLayout = layout;
+
+                    PopulateAssignmentsList();   // <--- add this line
                 }
 
                 lblCommStatus.Text = $"Connected: ({_usb.VendorId}:{_usb.ProductId}) Protocol: {_usb.ProtocolType}.id{_usb.Version}";
-
+                SeedRowsFromLayout();         // <— add this
+                DumpAllSlotsToConsole();      // <— and this
                 ShowDisclaimerIfNeeded();
             };
         }
@@ -79,6 +134,108 @@ namespace RSoft.MacroPad.Forms
             lblStatus.Text = connected ? "Connected" : "Disconnected";
             lblStatus.BackColor = connected ? Color.FromArgb(0, 128, 0) : Color.FromArgb(128, 0, 0);
             tsSend.Enabled = connected;
+        }
+
+        //private void tsWriteAll_Click(object sender, EventArgs e)
+        //{
+        //    StopRecording(sender, e);
+
+        //    if (_assignments.Count == 0)
+        //    {
+        //        MessageBox.Show("No assignments to send.");
+        //        return;
+        //    }
+
+        //    var composer = _composerRepository.Get(_usb.ProtocolType, _usb.Version);
+        //    bool success = true;
+
+        //    foreach (var rec in _assignments.Values)
+        //    {
+        //        IEnumerable<Report> reports = Enumerable.Empty<Report>();
+
+        //        switch (rec.Type)
+        //        {
+        //            case Model.SetFunction.KeySequence:
+        //                reports = composer.Key(
+        //                    rec.Action,
+        //                    rec.Layer,
+        //                    keyboardFunction1.Delay, // you may want to store Delay in rec as well
+        //                    rec.Value.Split(' ').Select(vk => (/*MapKeyCode*/ KeyCodeMapper.Map((VirtualKey)int.Parse(vk)), ModifierMapper.None))
+        //                );
+        //                break;
+
+        //            case Model.SetFunction.MediaKey:
+        //                reports = composer.Media(rec.Action, rec.Layer, MediaKeyMapper.Map((VirtualKey)Enum.Parse(typeof(VirtualKey), rec.Value)));
+        //                break;
+
+        //            case Model.SetFunction.Mouse:
+        //                // parse back from Value string if needed
+        //                break;
+
+        //            case Model.SetFunction.LED:
+        //                // same idea – parse back from Value string
+        //                break;
+        //        }
+
+        //        foreach (var report in reports)
+        //        {
+        //            if (!_usb.Write(report))
+        //            {
+        //                success = false;
+        //                Console.WriteLine($"Write failed for {rec.Action} on L{rec.Layer}");
+        //                break;
+        //            }
+        //        }
+
+        //        if (!success) break;
+        //    }
+
+        //    lblCommStatus.Text = success ? "WriteAll successful" : "WriteAll failed";
+        //    lblCommStatus.Text += $" [{DateTime.Now:T}]";
+        //}
+
+        private void SaveProfile(string path)
+        {
+            var json = System.Text.Json.JsonSerializer.Serialize(_assignments.Values);
+            File.WriteAllText(path, json);
+        }
+
+        private void LoadProfile(string path)
+        {
+            var list = System.Text.Json.JsonSerializer.Deserialize<List<AssignmentRecord>>(File.ReadAllText(path));
+            _assignments.Clear();
+            foreach (var rec in list)
+                _assignments[(rec.Layer, rec.Action)] = rec;
+
+            // refresh ListView
+            foreach (ListViewItem row in _lvAssignments.Items)
+            {
+                var key = ((byte Layer, InputAction Action))row.Tag;
+                if (_assignments.TryGetValue(key, out var rec))
+                {
+                    row.SubItems[2].Text = rec.Type.ToString();
+                    row.SubItems[3].Text = rec.Value;
+                }
+            }
+        }
+
+        private void SafeSetSplitterDistance()
+        {
+            if (_editorAndListSplit == null) return;
+
+            int h = _editorAndListSplit.Height;
+            if (h <= 0) return;
+
+            int minTop = _editorAndListSplit.Panel1MinSize;
+            int maxTop = h - _editorAndListSplit.Panel2MinSize - _editorAndListSplit.SplitterWidth;
+            if (maxTop < minTop) return; // too small; let WinForms handle it
+
+            int target = (int)(h * 0.55);               // ~55% to Panel1 (Key setup)
+            if (target < minTop) target = minTop;
+            if (target > maxTop) target = maxTop;
+
+            if (_editorAndListSplit.SplitterDistance != target)
+                _editorAndListSplit.SplitterDistance = target;
         }
 
         private void InitializeLayouts()
@@ -100,6 +257,9 @@ namespace RSoft.MacroPad.Forms
                     StopRecording(s, e);
                     keyboardVisual1.KeyboardLayout = l;
                     keyboardFunction1.KeyboardLayout = l;
+                    PopulateAssignmentsList();   // ensure the list refreshes when switching layouts
+                    SeedRowsFromLayout();      // ← add this
+                    DumpAllSlotsToConsole();   // ← and this
                 };
 
                 return result;
@@ -165,6 +325,12 @@ namespace RSoft.MacroPad.Forms
                 ? "Writing successful"
                 : "Write failed";
             lblCommStatus.Text += $" [{DateTime.Now.ToString("T")}]";
+            if (success)
+            {
+                UpsertAssignmentFromUI();
+            }
+
+
         }
 
         private void tsAbout_Click(object sender, EventArgs e)
@@ -179,5 +345,226 @@ namespace RSoft.MacroPad.Forms
             var f = new ConnectionForm(_usb);
             f.ShowDialog();
         }
+
+        // --- Assignment model kept only in UI memory ---
+        private sealed class AssignmentRecord
+        {
+            public byte Layer { get; init; }
+            public InputAction Action { get; init; }
+            public Model.SetFunction Type { get; init; }
+            public string Value { get; init; } = "—";
+        }
+
+        // Key for dictionary lookups
+        private readonly Dictionary<(byte Layer, InputAction Action), AssignmentRecord> _assignments
+            = new Dictionary<(byte, InputAction), AssignmentRecord>();
+
+
+
+        // Build the ListView UI at runtime (no Designer changes required)
+        private void BuildAssignmentListView()
+        {
+            // Build the ListView + bottom group
+            _lvAssignments = new ListView
+            {
+                Dock = DockStyle.Fill,
+                View = View.Details,
+                FullRowSelect = true,
+                GridLines = true
+            };
+            _lvAssignments.Columns.Add("Layer", 70);
+            _lvAssignments.Columns.Add("Slot", 180);
+            _lvAssignments.Columns.Add("Type", 140);
+            _lvAssignments.Columns.Add("Value", 800);
+
+            _grpAssignments = new GroupBox
+            {
+                Text = "Assignments",
+                Dock = DockStyle.Fill
+            };
+            _grpAssignments.Controls.Add(_lvAssignments);
+
+            // Parent is the existing Panel2 from your main split (created by the Designer)
+            var panel2 = splitContainer1.Panel2;
+
+            panel2.SuspendLayout();
+
+            // Create nested split — DO NOT touch Panel2MinSize / SplitterDistance yet
+            _editorAndListSplit = new SplitContainer();
+            ((System.ComponentModel.ISupportInitialize)_editorAndListSplit).BeginInit();
+            _editorAndListSplit.Dock = DockStyle.Fill;
+            _editorAndListSplit.Orientation = Orientation.Horizontal;
+            _editorAndListSplit.SplitterWidth = 6;
+
+            // Move groupBox3 (Key setup) into Panel1 of the nested split
+            panel2.Controls.Remove(groupBox3);
+            panel2.Controls.Add(_editorAndListSplit);
+            ((System.ComponentModel.ISupportInitialize)_editorAndListSplit).EndInit();
+
+            groupBox3.Dock = DockStyle.Fill;
+            _editorAndListSplit.Panel1.Controls.Add(groupBox3);
+
+            // Bottom: assignments list
+            _editorAndListSplit.Panel2.Controls.Add(_grpAssignments);
+
+            panel2.ResumeLayout();
+
+            // Defer size-sensitive settings until after layout
+            this.Shown += (_, __) =>
+            {
+                _editorAndListSplit.Panel2MinSize = 160;          // set now that we have size
+                _editorAndListSplit.FixedPanel = FixedPanel.Panel2;
+                SafeSetSplitterDistance();                        // initial distance (~55% top)
+            };
+
+            _editorAndListSplit.SizeChanged += (_, __) =>
+            {
+                // Keep it sensible on first layout / resizes
+                SafeSetSplitterDistance();
+            };
+        }
+
+
+        //private void EnsureKeySetupVisible()
+        //{
+        //    // Bottom-most: assignments list
+        //    _grpAssignments.Dock = DockStyle.Bottom;
+        //    _grpAssignments.Height = 220;            // adjust to taste
+        //    _grpAssignments.MinimumSize = new Size(0, 160);
+
+        //    // Just above it: the existing Key setup area (keyboardFunction1 lives here)
+        //    groupBox3.Dock = DockStyle.Bottom;
+        //    groupBox3.Height = 260;                  // adjust to taste
+        //    groupBox3.MinimumSize = new Size(0, 180);
+
+        //    // Make sure ordering is: [top content] ... groupBox3 ... _grpAssignments ... status bar
+        //    this.Controls.SetChildIndex(_grpAssignments, 0); // bottom
+        //    this.Controls.SetChildIndex(groupBox3, 0);       // just above assignments
+        //}
+
+
+        // Fill the table with one row for EVERY action in the current layout (all layers)
+        private void SeedRowsFromLayout()
+        {
+            _lvAssignments.BeginUpdate();
+            _lvAssignments.Items.Clear();
+            _assignments.Clear();
+
+            var layout = keyboardVisual1.KeyboardLayout;
+            if (layout == null)
+            {
+                _lvAssignments.EndUpdate();
+                return;
+            }
+
+            // KeyboardLayout has LayerCount in your codebase
+            var layerCount =3;
+
+            // layout.Controls are PhysicalControl-derived and expose .Actions
+            foreach (PhysicalControl control in layout.Controls)
+            {
+                foreach (var action in control.Actions)
+                {
+                    for (byte layer = 1; layer <= layerCount; layer++)
+                    {
+                        var rec = new AssignmentRecord
+                        {
+                            Layer = layer,
+                            Action = action,
+                            Type = Model.SetFunction.KeySequence,
+                            Value = "—"
+                        };
+                        _assignments[(layer, action)] = rec;
+
+                        var lvi = new ListViewItem(new[]
+                            {
+                                layer.ToString(),
+                                action.ToString(), // e.g., "Key1", "Knob1_CW"
+                                "—",
+                                "—"
+                            })
+                            { Tag = (layer, action) };
+
+                        _lvAssignments.Items.Add(lvi);
+                    }
+                }
+            }
+
+            _lvAssignments.EndUpdate();
+        }
+
+        private void DumpAllSlotsToConsole()
+        {
+            var layout = keyboardVisual1.KeyboardLayout;
+            if (layout == null)
+            {
+                Debug.WriteLine("No layout loaded.");
+                return;
+            }
+
+            const int layerCount = 3; // your hardware has 3 layers
+
+            Debug.WriteLine($"--- Dump for layout {layout.Name} ---");
+
+            foreach (PhysicalControl control in layout.Controls)
+            {
+                foreach (var action in control.Actions)
+                {
+                    for (byte layer = 1; layer <= layerCount; layer++)
+                    {
+                        if (_assignments.TryGetValue((layer, action), out var rec))
+                        {
+                            Debug.WriteLine($"L{layer} | {action} | {rec.Type} | {rec.Value}");
+                        }
+                        else
+                        {
+                            Debug.WriteLine($"L{layer} | {action} | — | —");
+                        }
+                    }
+                }
+            }
+        }
+
+
+        // Called after a successful Send to store/update the assignment and refresh that row
+        private void UpsertAssignmentFromUI()
+        {
+            var layer = keyboardVisual1.Layer;                   // current layer
+            var action = keyboardVisual1.SelectedAction;         // selected key/knob action
+            var type = keyboardFunction1.Function;               // KeySequence / MediaKey / Mouse / LED
+
+            string valueText = type switch
+            {
+                Model.SetFunction.KeySequence => string.Join(" ", keyboardFunction1.KeySequence.Select(k =>
+                    $"{(k.CtrlL || k.CtrlR ? "Ctrl+" : "")}{(k.ShiftL || k.ShiftR ? "Shift+" : "")}{(k.AltL || k.AltR ? "Alt+" : "")}{(k.WinL || k.WinR ? "Win+" : "")}{k.ScanCode}")),
+                Model.SetFunction.MediaKey => keyboardFunction1.MediaKey.ToString(),
+                Model.SetFunction.Mouse => $"{keyboardFunction1.MouseButton} {keyboardFunction1.MouseModifier}",
+                Model.SetFunction.LED => $"{keyboardFunction1.LedMode} {(keyboardFunction1.LedColor)}",
+                _ => "—"
+            };
+
+            var rec = new AssignmentRecord
+            {
+                Layer = layer,
+                Action = action,
+                Type = type,
+                Value = valueText
+            };
+            _assignments[(layer, action)] = rec;
+
+            // update the row in-place
+            foreach (ListViewItem row in _lvAssignments.Items)
+            {
+                var key = ((byte Layer, InputAction Action))row.Tag;
+                if (key.Layer == layer && key.Action.Equals(action))
+                {
+                    row.SubItems[2].Text = type.ToString();
+                    row.SubItems[3].Text = valueText;
+                    break;
+                }
+            }
+        }
+
+
     }
 }
