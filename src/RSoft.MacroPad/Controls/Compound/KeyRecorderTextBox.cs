@@ -67,6 +67,7 @@ namespace RSoft.MacroPad.Controls.Compound
             Resize += (s, e) => RefreshDisplayLayout();
         }
 
+        
         protected override void Dispose(bool disposing)
         {
             base.Dispose(disposing);
