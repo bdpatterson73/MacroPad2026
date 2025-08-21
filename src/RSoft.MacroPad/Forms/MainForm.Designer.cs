@@ -118,18 +118,17 @@
             // 
             // keyboardFunction1
             // 
-            keyboardFunction1.Delay = (ushort)6000;
+            keyboardFunction1.Delay = (ushort)150;
             keyboardFunction1.Dock = System.Windows.Forms.DockStyle.Fill;
             keyboardFunction1.Function = Model.SetFunction.KeySequence;
             keyboardLayout2.Controls = null;
             keyboardLayout2.LayerCount = 0;
             keyboardLayout2.LedModeCount = 3;
-            keyboardLayout2.MaxCharacters = 5;
             keyboardLayout2.Name = null;
             keyboardLayout2.Products = null;
             keyboardLayout2.SupportsColor = false;
             keyboardLayout2.SupportsDelay = false;
-            keyboardFunction1.KeyboardLayout = keyboardLayout2;
+            
             keyboardFunction1.LedColor = BLL.Infrasturture.Model.LedColor.Random;
             keyboardFunction1.LedMode = BLL.Infrasturture.Model.LedMode.Mode0;
             keyboardFunction1.Location = new System.Drawing.Point(7, 38);

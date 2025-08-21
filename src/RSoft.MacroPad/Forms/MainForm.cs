@@ -220,23 +220,23 @@ namespace RSoft.MacroPad.Forms
         }
 
         private void SafeSetSplitterDistance()
-        {
-            if (_editorAndListSplit == null) return;
+{
+    if (_editorAndListSplit == null) return;
 
-            int h = _editorAndListSplit.Height;
-            if (h <= 0) return;
+    int h = _editorAndListSplit.Height;
+    if (h <= 0) return;
 
-            int minTop = _editorAndListSplit.Panel1MinSize;
-            int maxTop = h - _editorAndListSplit.Panel2MinSize - _editorAndListSplit.SplitterWidth;
-            if (maxTop < minTop) return; // too small; let WinForms handle it
+    int minTop = _editorAndListSplit.Panel1MinSize;
+    int maxTop = h - _editorAndListSplit.Panel2MinSize - _editorAndListSplit.SplitterWidth;
+    if (maxTop < minTop) return; // too small; let WinForms handle it
 
-            int target = (int)(h * 0.55);               // ~55% to Panel1 (Key setup)
-            if (target < minTop) target = minTop;
-            if (target > maxTop) target = maxTop;
+    int target = (int)(h * 0.55);               // ~55% to Panel1 (Key setup)
+    if (target < minTop) target = minTop;
+    if (target > maxTop) target = maxTop;
 
-            if (_editorAndListSplit.SplitterDistance != target)
-                _editorAndListSplit.SplitterDistance = target;
-        }
+    if (_editorAndListSplit.SplitterDistance != target)
+        _editorAndListSplit.SplitterDistance = target;
+}
 
         private void InitializeLayouts()
         {
@@ -281,6 +281,25 @@ namespace RSoft.MacroPad.Forms
 
         private void tsSend_Click(object sender, EventArgs e)
         {
+            // *****************************************************************
+            // sanity: are we starting with a selected action?
+            if (keyboardVisual1.SelectedAction == InputAction.None)
+            {
+                MessageBox.Show("Please select a key or knob action to map!");
+                return;
+            }
+
+            // what does the editor have?
+            var seq = keyboardFunction1.KeySequence.ToList();
+            System.Diagnostics.Debug.WriteLine($"[DEBUG] UI sequence count = {seq.Count}");
+
+            foreach (var (s, i) in seq.Select((k, i) => (k, i)))
+            {
+                System.Diagnostics.Debug.WriteLine(
+                    $"[DEBUG] [{i}] scan={s.ScanCode} mods=Ctrl({s.CtrlL || s.CtrlR}) Shift({s.ShiftL || s.ShiftR}) Alt({s.AltL || s.AltR}) Win({s.WinL || s.WinR})");
+            }
+
+            // ****************************************************************
             StopRecording(sender, e);
             if (keyboardVisual1.SelectedAction == InputAction.None)
             {
@@ -313,6 +332,18 @@ namespace RSoft.MacroPad.Forms
             }
             bool success = true;
             HidLog.ClearLog();
+            // ****************************************************************
+            var list = reports.ToList();
+            System.Diagnostics.Debug.WriteLine($"[LEGACY] sending {list.Count} reports");
+            for (int i = 0; i < list.Count; i++)
+            {
+                var r = list[i];
+                var hex = BitConverter.ToString(r.Data);
+                System.Diagnostics.Debug.WriteLine($"[LEGACY] #{i:D2} id=0x{r.ReportId:X2} data={hex}");
+            }
+
+
+            // *****************************************************************
             foreach (var report in reports)
             {
                 if (!_usb.Write(report))
@@ -329,7 +360,7 @@ namespace RSoft.MacroPad.Forms
             {
                 UpsertAssignmentFromUI();
             }
-
+            
 
         }
 

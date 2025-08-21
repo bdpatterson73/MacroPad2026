@@ -35,7 +35,7 @@ Layout: 9 buttons 2 knobs
 
 Layout: 12 buttons 2 knobs (v1)
 	4489:34960
-	3:18:1:1:6
+	3:5:1:1:6
 	B1,5,5
 	B2,25,5
 	B3,45,5

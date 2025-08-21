@@ -146,7 +146,7 @@ namespace RSoft.MacroPad.Controls.Compound
                 keyboardLayout = new KeyboardLayout
                 {
                     LedModeCount = 3,
-                    MaxCharacters = 5,
+                    MaxCharacters = 15,
                     SupportsColor = false,
                     SupportsDelay = false,
                 };

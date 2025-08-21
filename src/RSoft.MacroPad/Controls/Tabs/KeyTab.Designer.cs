@@ -56,7 +56,7 @@
             nudDelay.Name = "nudDelay";
             nudDelay.Size = new System.Drawing.Size(55, 23);
             nudDelay.TabIndex = 2;
-            nudDelay.Value = new decimal(new int[] { 6000, 0, 0, 0 });
+            nudDelay.Value = new decimal(new int[] { 150, 0, 0, 0 });
             // 
             // label2
             // 

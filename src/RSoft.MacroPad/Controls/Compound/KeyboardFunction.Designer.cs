@@ -101,7 +101,7 @@
             // 
             // keyTab1
             // 
-            keyTab1.Delay = (ushort)6000;
+            keyTab1.Delay = (ushort)100;
             keyTab1.DelaySupported = false;
             keyTab1.Dock = System.Windows.Forms.DockStyle.Fill;
             keyTab1.Location = new System.Drawing.Point(4, 3);
